@@ -4,19 +4,10 @@
 X = rand(100, 2)
 Y = rand(range(-1, step = 2, 1), 100)
 
-D = Y
 
 p(x, α) = x + 1/α * log(1 + exp(-α*x))
 
-ssvm(w, γ, α) = v/2 * sum(p.(1 .- Y*(A*w .- γ), α).^2) + 1/2*(w'*w + γ^2)
-
-w = rand(size(X,2))
-
-function ssvm(X, Y, w, v, α, γ)
-    #γ = float(similar(Y))
-    #for i in 1:size(X,1)
-    #    γ[i] = X[i,:]'*w
-    #end
+function ssvm(X::AbstractArray, Y::Real, w::AbstractArray, v::Real, γ::Real, α = 100)
     return v/2 * sum((p.(1 .- Y.*(X*w .- γ), α)).^2) + 1/2*(w'*w + γ.^2)
 end
 
@@ -24,9 +15,9 @@ using Plots
 
 w = rand(size(X,2))
 γ = 0.5
-ssvm(X,Y, w, 1, 1, γ)
+ssvm(X,Y, w, 1, 1)
 
-using HigherOrderDerivatives
+using HigherOrderDerivatives'
 
 
 
