@@ -14,12 +14,8 @@ function ssvm(X::AbstractArray, Y::AbstractArray, w::AbstractArray, v::Real, γ:
 end
 
 
-
 w = rand(size(X,2))
-
-
 ssvm(X, Y, w, 1, 1)
-
 
 
 
@@ -32,8 +28,9 @@ function optimize(X, Y, v, epochs, stepsize)
         t1 = w -> ssvm(X, Y, w, v, γ)
         t2 =  γ -> ssvm(X, Y, w, v, γ)
 
-        w = w - stepsize * gradient(t1, w) # hessian(t1, w) \ gradient(t1, w)
-        γ = γ - stepsize * derivative(t2, γ) #  / derivative(t2, γ, 2)
+        # newton method faster convergence
+        w = w - stepsize .* (hessian(t1, w) \ gradient(t1, w))
+        γ = γ - stepsize .* (derivative(t2, γ) / derivative(t2, γ, 2))
 
         append!(loss, ssvm(X, Y, w, v, γ))
     end
@@ -42,12 +39,6 @@ function optimize(X, Y, v, epochs, stepsize)
 end
 
 
-v = 0.1
-t1 = w -> ssvm(X, Y, w, v, 100, γ)
-t2 =  γ -> ssvm(X, Y, w, v, 100, γ)
-
-
-
-test = optimize(X, Y, 0.1, 100, 0.01)
+test = optimize(X, Y, 0.1, 200, 0.1)
 
 plot(test)
