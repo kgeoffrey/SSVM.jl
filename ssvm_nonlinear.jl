@@ -1,23 +1,18 @@
-### test smooth ssvm
+### SSVM with nonlinear kernel
 using HigherOrderDerivatives
 using Plots
 using StatsBase
 using CSV
 using LinearAlgebra
 
-# synthetic data
-X = rand(100, 2)
-Y = rand(range(-1, step = 2, 1), 100)
-w = rand(size(X,2))
-## functions
+
 p(x, α) = x + 1/α * log(1 + exp(-α*x))
 
-function ssvm(X::AbstractArray, Y::AbstractArray, w::AbstractArray, v::Real, γ::Number, α = 100)
+function ssvm_nl(X::AbstractArray, Y::AbstractArray, w::AbstractArray, v::Real, γ::Number, α = 100)
     return v/2 * sum((p.(1 .- Y.*(X*w .- γ), α)).^2) + 1/2*(w'*w + γ.^2)
 end
 
-## testing
-ssvm(X, Y, w, 1, 1)
+
 
 
 function optimize(X, Y, v, epochs, stepsize)
@@ -83,3 +78,61 @@ end
 function accuracy(SVM, Y_test)
     return 100 - sum(npred - Y_test)/length(npred)
 end
+
+
+### kernel
+me(X) = [X[i,:]'*X[i,:] for i in 1:size(X,1) ]
+
+t = me(X_train)
+
+
+function rbf(X, gamma)
+    X = [X[i,:]'*X[i,:] for i in 1:size(X,1) ]
+    kern = [norm(X[i] - X[j]) for i in eachindex(X), j in eachindex(X)]
+
+    return exp.(-(1/(2*gamma)).*kern)
+end
+
+
+function ssvm_nl(X::AbstractArray, Y::AbstractArray, w::AbstractArray, v::Real, γ::Number, α = 10)
+    return v/2 * sum((p.(1 .- Y.*(rbf(X, 1)*(Y.* w) .- γ), α)).^2) + 1/2*(w'*w + γ.^2)
+end
+
+function optimize_nl(X, Y, v, epochs, stepsize)
+    w = rand(size(X,1))
+    γ = 1
+
+    loss = []
+    for i in 1:epochs
+        t1 = w -> ssvm_nl(X, Y, w, v, γ)
+        t2 =  γ -> ssvm_nl(X, Y, w, v, γ)
+
+        # newton method faster convergence
+        w = w - stepsize .* (hessian(t1, w) \ gradient(t1, w))
+        γ = γ - stepsize .* (derivative(t2, γ) / derivative(t2, γ, 2))
+
+        append!(loss, ssvm(X, Y, w, v, γ))
+    end
+
+    return loss, w, γ
+end
+
+
+test = optimize_nl(X_train, Y_train, 0.1, 200, 0.1)
+
+
+ssvm_nl(X_train, Y_train, rand(size(X_train, 1)), 1, 0.5)
+
+
+t1 = w -> ssvm_nl(X_train, Y_train, w, 1, 0.5)
+
+
+e = rand(size(X_train, 1))
+
+gradient(t1, e)
+
+## tests
+import Base: convert,+
+Dual{Float64}(x) = convert(Dual, x)
+convert(::Type{Dual{<:Real}}, x::Real) = Dual(x, one(x))
++(x::Dual, y::Dual) = Dual(x.f .+ y.f, x.g .+ y.g)
