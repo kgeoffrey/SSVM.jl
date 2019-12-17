@@ -1,7 +1,8 @@
 ### test smooth ssvm
 using HigherOrderDerivatives
 using Plots
-
+using StatsBase
+using CSV
 
 X = rand(100, 2)
 Y = rand(range(-1, step = 2, 1), 100)
@@ -35,10 +36,41 @@ function optimize(X, Y, v, epochs, stepsize)
         append!(loss, ssvm(X, Y, w, v, γ))
     end
 
-    return loss
+    return loss, w, γ
 end
 
 
 test = optimize(X, Y, 0.1, 200, 0.1)
 
 plot(test)
+
+### get data here
+
+df = convert(Matrix{Float64}, CSV.read("data.csv", delim = ","))
+
+function split(df, samplesize)
+    idx = sample(1:size(X,1), size(X,1))
+    l = length(idx)
+    df = df[idx, :]
+    s = Int(floor(l*samplesize))
+    df_train = df[1:l-s, :]
+    df_test = df[l-s:end, :]
+    X_train = df_train[:,1:end .!= 5]
+    Y_train = df_train[:,5]
+    X_test = df_test[:,1:end .!= 5]
+    Y_test = df_test[:,5]
+    return X_test, Y_test, X_train, Y_train
+end
+
+X_test, Y_test, X_train, Y_train = split(df, .20)
+
+
+test, we, g = optimize(X_train, Y_train, 0.1, 20, 0.1)
+
+plot(test)
+
+pred = X_test*we .- g
+
+[-1 for i in pred if i < 0]
+
+npred = [if i < 0 -1. else 1. end for i in pred]
