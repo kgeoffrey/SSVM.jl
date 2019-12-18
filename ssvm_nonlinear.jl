@@ -5,45 +5,11 @@ using StatsBase
 using CSV
 using LinearAlgebra
 
-
-p(x, α) = x + 1/α * log(1 + exp(-α*x))
-
-function ssvm_nl(X::AbstractArray, Y::AbstractArray, w::AbstractArray, v::Real, γ::Number, α = 100)
-    return v/2 * sum((p.(1 .- Y.*(X*w .- γ), α)).^2) + 1/2*(w'*w + γ.^2)
-end
-
-
-
-
-function optimize(X, Y, v, epochs, stepsize)
-    w = rand(size(X,2))
-    γ = 1
-
-    loss = []
-    for i in 1:epochs
-        t1 = w -> ssvm(X, Y, w, v, γ)
-        t2 =  γ -> ssvm(X, Y, w, v, γ)
-
-        # newton method faster convergence
-        w = w - stepsize .* (hessian(t1, w) \ gradient(t1, w))
-        γ = γ - stepsize .* (derivative(t2, γ) / derivative(t2, γ, 2))
-
-        append!(loss, ssvm(X, Y, w, v, γ))
-    end
-
-    return loss, w, γ
-end
-
-
-test = optimize(X, Y, 0.1, 200, 0.1)
-
-plot(test)
-
 ### get data here
 
 df = convert(Matrix{Float64}, CSV.read("data.csv", delim = ","))
 
-function split(df, samplesize)
+function splitthis(df, samplesize)
     idx = sample(1:size(df,1), size(df,1))
     l = length(idx)
     df = df[idx, :]
@@ -57,17 +23,9 @@ function split(df, samplesize)
     return X_test, Y_test, X_train, Y_train
 end
 
-X_test, Y_test, X_train, Y_train = split(df, 0.10)
+X_test, Y_test, X_train, Y_train = splitthis(df, 0.10)
 
-
-test, we, g = optimize(X_train, Y_train, 0.1, 50, 0.1)
-
-plot(test)
-
-pred = X_test*we .- g
-
-npred = [if i > 0 1 else (-1.) end for i in pred]
-
+### other methods!
 
 function predict(SVM, X_test)
     pred = X_test*we .- g
@@ -80,59 +38,94 @@ function accuracy(SVM, Y_test)
 end
 
 
-### kernel
-me(X) = [X[i,:]'*X[i,:] for i in 1:size(X,1) ]
+### kernels
 
-t = me(X_train)
-
-
-function rbf(X, gamma)
+function rbf(X::AbstractArray; gamma = 0.1)
     X = [X[i,:]'*X[i,:] for i in 1:size(X,1) ]
     kern = [norm(X[i] - X[j]) for i in eachindex(X), j in eachindex(X)]
-
     return exp.(-(1/(2*gamma)).*kern)
 end
 
-
-function ssvm_nl(X::AbstractArray, Y::AbstractArray, w::AbstractArray, v::Real, γ::Number, α = 10)
-    return v/2 * sum((p.(1 .- Y.*(rbf(X, 1)*(Y.* w) .- γ), α)).^2) + 1/2*(w'*w + γ.^2)
+function linear(X::AbstractArray)
+    return X*X'
 end
 
-function optimize_nl(X, Y, v, epochs, stepsize)
+### test data ###
+
+X = rand(100, 2)
+Y = rand(range(-1, step = 2, 1), 100)
+w = rand(size(X,2))
+new  = rbf(X)
+
+p(x, α) = x + 1/α * log(1 + exp(-α*x))
+
+function gssvm_loss(X::AbstractArray, Y::AbstractArray, w::AbstractArray, C::Real, γ::Number, α = 10)
+    return C/2 * sum((p.(1 .- Y.*(X * Y.*w .- γ), α)).^2) + 1/2*(w'*w + γ.^2)
+end
+
+function ssvm_loss(X::AbstractArray, Y::AbstractArray, w::AbstractArray, v::Real, γ::Number, α = 100)
+    return v/2 * sum((p.(1 .- Y.*(X*w .- γ), α)).^2) + 1/2*(w'*w + γ.^2)
+end
+
+t1 = w -> ssvm_nl(new, Y, w, 1, 0.5)
+e = rand(size(X, 1))
+
+@time gradient(t1, e)
+
+function fit(X, Y, C, epochs, stepsize)
+    X = kernel(X)
     w = rand(size(X,1))
     γ = 1
-
     loss = []
     for i in 1:epochs
-        t1 = w -> ssvm_nl(X, Y, w, v, γ)
-        t2 =  γ -> ssvm_nl(X, Y, w, v, γ)
-
+        t1 = w -> ssvm_nl(X, Y, w, C, γ)
+        t2 =  γ -> ssvm_nl(X, Y, w, C, γ)
         # newton method faster convergence
         w = w - stepsize .* (hessian(t1, w) \ gradient(t1, w))
         γ = γ - stepsize .* (derivative(t2, γ) / derivative(t2, γ, 2))
-
-        append!(loss, ssvm(X, Y, w, v, γ))
+        append!(loss, ssvm_nl(X, Y, w, C, γ))
     end
-
     return loss, w, γ
 end
 
+test, ww ,yy = fit(new, Y, 0.1, 100, 0.1)
 
-test = optimize_nl(X_train, Y_train, 0.1, 200, 0.1)
-
-
-ssvm_nl(X_train, Y_train, rand(size(X_train, 1)), 1, 0.5)
+plot(test)
 
 
-t1 = w -> ssvm_nl(X_train, Y_train, w, 1, 0.5)
+mutable struct GSSVM
+    kernel::Function
+    X::AbstractArray
+    Y::AbstractArray
+    w::AbstractArray
+    γ::Real
+    loss::AbstractArray
+    function GSSVM(kernel::Function, X::AbstractArray, Y::AbstractArray)
+        X = kernel(X)
+        w = rand(size(X,1))
+        γ = 1
+        loss = []
+        new(kernel, X, Y, w, γ, loss)
+    end
+end
 
 
-e = rand(size(X_train, 1))
 
-gradient(t1, e)
+model = GSSVM(rbf, X, Y)
 
-## tests
-import Base: convert,+
-Dual{Float64}(x) = convert(Dual, x)
-convert(::Type{Dual{<:Real}}, x::Real) = Dual(x, one(x))
-+(x::Dual, y::Dual) = Dual(x.f .+ y.f, x.g .+ y.g)
+function fit(obj::SSVM, C::Real, epochs, stepsize)
+    for i in 1:epochs
+        t1 = w -> ssvm_nl(obj.X, obj.Y, w, C, obj.γ)
+        t2 =  γ -> ssvm_nl(obj.X, obj.Y, obj.w, C, γ)
+        # newton method faster convergence
+        obj.w = obj.w - stepsize .* (hessian(t1, obj.w) \ gradient(t1, obj.w))
+        obj.γ = obj.γ - stepsize .* (derivative(t2, obj.γ) / derivative(t2, obj.γ, 2))
+        append!(obj.loss, ssvm_nl(obj.X, obj.Y, obj.w, C, obj.γ))
+    end
+end
+
+
+model = GSSVM(linear, X, Y)
+fit(model, 0.1, 100, 0.01)
+
+plot(model.loss)
