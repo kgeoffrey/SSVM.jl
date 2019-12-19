@@ -6,7 +6,6 @@ using StatsBase
 using CSV
 using LinearAlgebra
 
-
 ## functions
 p(x, α) = x + 1/α * log(1 + exp(-α*x))
 
@@ -18,7 +17,6 @@ function ssvm_loss(X::AbstractArray, Y::AbstractArray, w::AbstractArray, C::Real
     return C/2 * sum((p.(1 .- Y.*(X * w .- γ), α)).^2) + 1/2*(w'*w + γ.^2)
 end
 
-
 abstract type SVM end
 
 mutable struct GSSVM <: SVM
@@ -29,13 +27,15 @@ mutable struct GSSVM <: SVM
     γ::Real
     loss::AbstractArray
     C::Real
+    X_train::AbstractArray
     function GSSVM(kernel::Function, X::AbstractArray, Y::AbstractArray)
-        X = kernel(X)
+        X_train = X
+        X = kernel(X, X)
         w = rand(size(X,1))
         γ = 1
         loss = []
         C = 0.1
-        new(kernel, X, Y, w, γ, loss, C)
+        new(kernel, X, Y, w, γ, loss, C, X_train)
     end
 end
 
@@ -57,42 +57,25 @@ end
 
 ### kernels
 
-function rbf(X::AbstractArray; gamma = 0.1)
-    X = [X[i,:]'*X[i,:] for i in 1:size(X,1) ]
-    kern = [norm(X[i] - X[j]) for i in eachindex(X), j in eachindex(X)]
+
+function rbf(X::AbstractArray, XX::AbstractArray; gamma = 0.1)
+    kern = [norm(X[i,:] - XX[j,:])^2 for i in 1:size(X,1), j in 1:size(XX,1)]
     return exp.(-(1/(2*gamma)).*kern)
 end
 
-function linear(X::AbstractArray)
-    return X*X'
+function linear(X::AbstractArray, XX::AbstractArray)
+    return X'*XX
 end
 
 ####
 
 
-
-df = convert(Matrix{Float64}, CSV.read("data.csv", delim = ","))
-function splitthis(df, samplesize)
-    idx = sample(1:size(df,1), size(df,1))
-    l = length(idx)
-    df = df[idx, :]
-    s = Int(floor(l*samplesize))
-    df_train = df[1:l-s, :]
-    df_test = df[l-s:end, :]
-    X_train = df_train[:,1:end .!= 5]
-    Y_train = [if i == 0 (-1) else 1 end for i in df_train[:,5]]
-    X_test = df_test[:,1:end .!= 5]
-    Y_test = [if i == 0 (-1) else 1 end for i in df_test[:,5]]
-    return X_test, Y_test, X_train, Y_train
-end
-X_test, Y_test, X_train, Y_train = splitthis(df, 0.10)
-
-function fit(obj::GSSVM, C::Real)
+function fit!(obj::GSSVM, C::Real)
     obj.C = C
     optimize!(obj, gssvm_loss)
 end
 
-function fit(obj::SSVM, C::Real)
+function fit!(obj::SSVM, C::Real)
     obj.C = C
     optimize!(obj, ssvm_loss)
 end
@@ -138,19 +121,69 @@ function linesearch(obj::SVM, f::Function, λ, alph = 0.33)
 end
 
 
-
-
 #####
+
+df = convert(Matrix{Float64}, CSV.read("data.csv", delim = ","))
+function splitthis(df, samplesize)
+    idx = sample(1:size(df,1), size(df,1))
+    l = length(idx)
+    df = df[idx, :]
+    s = Int(floor(l*samplesize))
+    df_train = df[1:l-s, :]
+    df_test = df[l-s:end, :]
+    X_train = df_train[:,1:end .!= 5]
+    Y_train = [if i == 0 (-1) else 1 end for i in df_train[:,5]]
+    X_test = df_test[:,1:end .!= 5]
+    Y_test = [if i == 0 (-1) else 1 end for i in df_test[:,5]]
+    return X_test, Y_test, X_train, Y_train
+end
+X_test, Y_test, X_train, Y_train = splitthis(df, 0.10)
+
 
 X = rand(100, 5)
 Y = rand(range(-1, step = 2, 1), 100)
 w = rand(size(X,2))
 
-new = SSVM(X, Y)
+new = GSSVM(rbf, X_test, Y_test)
 
-fit(new, 0.01)
+fit!(new, 0.01)
 
 plot(new.loss)
 
+function predict(obj::SSVM, X_test)
+    pred = X_test*obj.w .- obj.γ
+    pred = [if i > 0 (1.) else (-1.) end for i in pred]
+    return pred
+end
 
-t1 = w -> ssvm_loss(X, Y, w, 1, 0.5)
+function predict(obj::GSSVM, X_test)
+    pred = obj.kernel(obj.X_train, X_test) * obj.Y .* obj.w .- obj.γ
+    pred = [if i > 0 (1.) else (-1.) end for i in pred]
+    return pred
+end
+
+function accuracy(pred, Y_test)
+    return 100 - sum(pred - Y_test)/length(pred)
+end
+
+prediction = predict(new, X_train)
+
+accuracy(prediction, Y_test)
+
+rbf(X_train,  Matrix(transpose(X_test)))  # * new.Y
+
+X_test
+
+
+
+
+X_train
+
+function rbf(X::AbstractArray, XX::AbstractArray; gamma = 0.1)
+    kern = [norm(X[i,:] - XX[j,:])^2 for i in 1:size(X,1), j in 1:size(XX,1)]
+    return exp.(-(1/(2*gamma)).*kern)
+end
+
+rbf(X_train, X_train)
+
+rbf(X_train, X)
