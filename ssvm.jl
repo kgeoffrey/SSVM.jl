@@ -133,7 +133,10 @@ function accuracy(pred, Y_test)
 end
 #####
 
+using CSV
+
 df = convert(Matrix{Float64}, CSV.read("data.csv", delim = ","))
+
 function splitthis(df, samplesize)
     idx = sample(1:size(df,1), size(df,1))
     l = length(idx)
@@ -147,18 +150,13 @@ function splitthis(df, samplesize)
     Y_test = [if i == 0 (-1) else 1 end for i in df_test[:,5]]
     return X_test, Y_test, X_train, Y_train
 end
+
 X_test, Y_test, X_train, Y_train = splitthis(df, 0.10)
 
-X = rand(100, 5)
-Y = rand(range(-1, step = 2, 1), 100)
-w = rand(size(X,2))
+model = SSVM(X_train, Y_train)
 
-new = SSVM(X_train, Y_train)
+fit!(model, 0.01)
 
-fit!(new, 0.01)
-
-plot(new.loss)
-
-prediction = predict(new, X_test)
+prediction = predict(model, X_test)
 
 accuracy(prediction, Y_test)
