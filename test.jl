@@ -10,7 +10,7 @@ using LinearAlgebra
 p(x, α) = x + 1/α * log(1 + exp(-α*x))
 
 function gssvm_loss(X::AbstractArray, Y::AbstractArray, w::AbstractArray, C::Real, γ::Number, α = 10)
-    return C/2 * sum((p.(1 .- Y.*(X * Y.*w .- γ), α)).^2) + 1/2*(w'*w + γ.^2)
+    return C/2 * sum((p.(1 .- Y.*(X * w .* Y .- γ), α)).^2) + 1/2*(w'*w + γ.^2)
 end
 
 function ssvm_loss(X::AbstractArray, Y::AbstractArray, w::AbstractArray, C::Real, γ::Number, α = 100)
@@ -144,7 +144,7 @@ X = rand(100, 5)
 Y = rand(range(-1, step = 2, 1), 100)
 w = rand(size(X,2))
 
-new = GSSVM(rbf, X_test, Y_test)
+new = SSVM(X_train, Y_train)
 
 fit!(new, 0.01)
 
@@ -157,33 +157,16 @@ function predict(obj::SSVM, X_test)
 end
 
 function predict(obj::GSSVM, X_test)
-    pred = obj.kernel(obj.X_train, X_test) * obj.Y .* obj.w .- obj.γ
+    pred = obj.kernel(X_test, obj.X_train) * (obj.Y .* obj.w) .- obj.γ
     pred = [if i > 0 (1.) else (-1.) end for i in pred]
     return pred
 end
 
 function accuracy(pred, Y_test)
-    return 100 - sum(pred - Y_test)/length(pred)
+    # return 100 - sum(pred - Y_test)/length(pred)
+    return 1 - sum(abs.((Y_test + (-1 .*prediction))./2)) / length(prediction)
 end
 
-prediction = predict(new, X_train)
+prediction = predict(new, X_test)
 
 accuracy(prediction, Y_test)
-
-rbf(X_train,  Matrix(transpose(X_test)))  # * new.Y
-
-X_test
-
-
-
-
-X_train
-
-function rbf(X::AbstractArray, XX::AbstractArray; gamma = 0.1)
-    kern = [norm(X[i,:] - XX[j,:])^2 for i in 1:size(X,1), j in 1:size(XX,1)]
-    return exp.(-(1/(2*gamma)).*kern)
-end
-
-rbf(X_train, X_train)
-
-rbf(X_train, X)
