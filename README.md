@@ -35,5 +35,6 @@ fit!(model, 0.01)
 ## predict
 prediction = predict(model, X_test)
 
+## assess accuracy
 accuracy(prediction, Y_test)
 ```
